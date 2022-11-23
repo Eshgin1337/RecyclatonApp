@@ -72,6 +72,10 @@
                     </div>
 
                     <% if (locationError) { %>
+                        <script> 
+                            var loc = document.getElementById('location');
+                            loc.style.borderColor = 'red'; 
+                        </script>
                         <br>
                         <label for="location" class="text-danger">
                             <small style="background-color: #fff; margin-left: 10px;">

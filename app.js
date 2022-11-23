@@ -35,7 +35,9 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
-app.get('/profile')
+app.get('/profile', function (req, res) {
+    res.render('profile');
+})
 
 app.get('/register', function (req, res) {
     res.render('register', 
