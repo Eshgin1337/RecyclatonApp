@@ -21,7 +21,8 @@ app.use(session({
     cookie: {maxAge: 30000}
 }));
 
-mongoose.connect('mongodb://localhost:27017/recyclingDatabase');
+// mongoose.connect('mongodb://localhost:27017/recyclingDatabase');
+mongoose.connect("mongodb+srv://eshqin-hasanov:esqin@to-do-list.jfsv7.mongodb.net/?retryWrites=true&w=majority");
 
 const userSchema = new mongoose.Schema({
     name: {type: String, required: true},
@@ -34,6 +35,7 @@ const userSchema = new mongoose.Schema({
 
 const User = mongoose.model('User', userSchema);
 
+app.get('/profile')
 
 app.get('/register', function (req, res) {
     res.render('register', 
