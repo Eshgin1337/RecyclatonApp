@@ -3,10 +3,13 @@ const express = require('express');
 const ejs = require('ejs');
 const bodyParser = require('body-parser');
 const {body, validationResult} = require('express-validator');
+const path = require("path");
 const mongoose = require('mongoose');
 const session = require('express-session');
 const cookieParser = require('cookie-parser');
+const multer = require("multer");
 const bcrypt = require('bcrypt');
+const fs = require('fs');
 
 const app = express();
 
@@ -18,11 +21,24 @@ app.use(session({
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: {maxAge: 30000}
+    cookie: {maxAge: 180000}
 }));
 
-// mongoose.connect('mongodb://localhost:27017/recyclingDatabase');
-mongoose.connect("mongodb+srv://eshqin-hasanov:esqin@to-do-list.jfsv7.mongodb.net/?retryWrites=true&w=majority");
+const storage = multer.diskStorage({
+  destination: function (req, file, cb) {
+    cb(null, "uploads");
+  },
+  filename: function (req, file, cb) {
+    cb(
+      null,
+      file.fieldname + "-" + Date.now() + path.extname(file.originalname)
+    );
+  },
+});
+const upload = multer({ storage: storage });
+
+mongoose.connect('mongodb://localhost:27017/recyclingDatabase');
+// mongoose.connect("mongodb+srv://eshqin-hasanov:esqin@to-do-list.jfsv7.mongodb.net/?retryWrites=true&w=majority");
 
 const userSchema = new mongoose.Schema({
     name: {type: String, required: true},
@@ -33,10 +49,40 @@ const userSchema = new mongoose.Schema({
     isSeller: {type: Boolean, required: true},
 });
 
+var productSchema = new mongoose.Schema({
+    owner: String,
+    name: String,
+    categorie: String,
+    quantity: Number,
+    weight: Number,
+    description: String,
+    price: String,
+    main_img:
+    {
+        data: Buffer,
+        contentType: String
+    }
+});
+
+
+const productModel = mongoose.model("product", productSchema);
 const User = mongoose.model('User', userSchema);
 
+
 app.get('/profile', function (req, res) {
-    res.render('profile');
+    if (req.cookies.current_user) {
+        const userParams = req.cookies.current_user;
+        console.log(userParams);
+        res.render('profile', 
+            {
+                name: userParams.name, 
+                surname: userParams.surname,
+                location: userParams.location,
+                email: userParams.email
+            });
+    } else {
+        res.redirect('/login');
+    }
 })
 
 app.get('/register', function (req, res) {
@@ -59,9 +105,78 @@ app.get('/home', function (req, res) {
 });
 
 
+app.get('/about', function (req, res) {
+    res.render('about');
+});
+
+app.get('/editprofile',  function (req, res) {
+    res.render("edit_profile");
+})
+
+app.get('/addproduct', function (req, res) {
+    if (req.session.isAuth) {
+        res.render('add_product');
+    } else {
+        res.redirect('/login')
+    }
+});
+
+app.get("/shop",  (req, res) => {
+    productModel.find({}, (err, products) => {
+      if (err) {
+            console.log(err);
+            res.status(500).send("An error occurred", err);
+      } else {
+          if (req.cookies.current_user) {
+                const current_user = req.cookies.current_user;
+                res.render("shop_page", {products: products, name: current_user.name});
+            } else {
+                res.render("shop_page", {products: products, name: "undefined"});
+            }
+      }
+    });
+});
+
+
 app.get('/login', function (req, res) {
     res.render('login', {emailError: null, passwordError: null, curr_email: null});
 })
+
+
+app.get("/products/:id", function (req, res) {
+    res.render("product");
+});
+
+
+app.post('/addproduct', upload.single("main_image"), function (req, res) {
+    if (req.session.isAuth) {
+        const {product_name, product_categorie, available_quantity, product_weight, product_description, price} = req.body;
+        const owner = req.cookies.current_user.email;
+        const newProduct = new productModel(
+            {
+                owner: owner,
+                name: product_name,
+                categorie: product_categorie,
+                quantity: available_quantity,
+                weight: product_weight,
+                description: product_description,
+                price: price,
+                main_img: {
+                    data: fs.readFileSync(path.join(__dirname + "/uploads/" + req.file.filename)),
+                    contentType: "image/png"
+                }
+            }
+        );
+        newProduct.save((err) => {
+            err ? console.log(err) : res.redirect("/profile");
+        });
+    } else {
+        res.redirect('/login')
+    }
+})
+
+
+
 
 
 app.post('/register', 
@@ -119,7 +234,7 @@ app.post('/register',
                         isSeller: false
                     });
                     await newUser.save();
-                    res.redirect("/home")
+                    res.redirect("/login")
                 }
             })
         } else {
@@ -149,8 +264,6 @@ app.post('/register',
                     }
                 }
             });
-            console.log("------------------");
-            console.log(passwordErrors);
             res.render('register', 
                 {
                     nameError: nameError, 
@@ -198,7 +311,17 @@ app.post('/login',
                 } else {
                     await bcrypt.compare(pass, result.password, function (err, matches) {
                         if(matches) {
-                            res.redirect('/home');
+                            res.cookie('current_user', 
+                                {
+                                    name: result.name, 
+                                    surname: result.surname,
+                                    location: result.location,
+                                    email: result.email
+                                }, 
+                                    {maxAge: 180000}
+                            );
+                            req.session.isAuth = true;
+                            res.redirect('/shop');
                         } else {
                             passwordError = "Password incorrect";
                             res.render('login', {emailError: emailError, passwordError: passwordError, curr_email: email})
@@ -209,9 +332,10 @@ app.post('/login',
         }
 })
 
-
-app.post('/login', function (req, res) {
-    res.send(req.body);
+app.get('/logout', function (req, res) {
+    res.clearCookie("current_user");
+    req.session.isAuth = false;
+    res.redirect("/shop")
 })
 
 app.listen(3000, function () {
